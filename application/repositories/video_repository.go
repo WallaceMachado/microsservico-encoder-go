@@ -40,6 +40,7 @@ func (repo VideoRepositoryDb) Insert(video *domain.Video) (*domain.Video, error)
 func (repo VideoRepositoryDb) Find(id string) (*domain.Video, error) {
 
 	var video domain.Video
+	// preload é para trazer o s dados de uma tabela estrangeira
 	repo.Db.Preload("Jobs").First(&video, "id = ?", id)
 
 	if video.ID == "" {
