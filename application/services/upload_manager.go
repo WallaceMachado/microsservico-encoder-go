@@ -3,8 +3,10 @@ package services
 import (
 	"context"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"cloud.google.com/go/storage"
@@ -74,6 +76,66 @@ func (vu *VideoUpload) loadPaths() error {
 		return err
 	}
 	return nil
+}
+
+func (vu *VideoUpload) ProcessUpload(concurrency int, doneUpload chan string) error {
+
+	//canal que armazena um numero inteiro
+	// runtime.NumCPU() => retorna o numero de cpu da máquina, se tivermos numa maquina octocore, ele retorna um buth de 8
+	// e o canal vai poder armazenar até 8 dados
+	in := make(chan int, runtime.NumCPU()) // qual o arquivo baseado na posicao do slice Paths
+	returnChannel := make(chan string)     // vai avisar quando cada upload terminar, pode ser um erro ou um ok
+
+	// carrega todos os caminhos dos arquivos
+	err := vu.loadPaths()
+	if err != nil {
+		return err
+	}
+
+	// gera um storage client
+	uploadClient, ctx, err := getClientUpload()
+	if err != nil {
+		return err
+	}
+
+	// loop
+	for process := 0; process < concurrency; process++ {
+		go vu.uploadWorker(in, returnChannel, uploadClient, ctx)
+	}
+
+	go func() {
+		for x := 0; x < len(vu.Paths); x++ {
+			in <- x
+		}
+		close(in)
+	}()
+
+	for r := range returnChannel {
+		if r != "" {
+			doneUpload <- r
+			break
+		}
+	}
+
+	return nil
+
+}
+
+func (vu *VideoUpload) uploadWorker(in chan int, returnChan chan string, uploadClient *storage.Client, ctx context.Context) {
+
+	for x := range in {
+		err := vu.UploadObject(vu.Paths[x], uploadClient, ctx)
+
+		if err != nil {
+			vu.Errors = append(vu.Errors, vu.Paths[x])
+			log.Printf("error during the upload: %v. Error: %v", vu.Paths[x], err)
+			returnChan <- err.Error()
+		}
+
+		returnChan <- ""
+	}
+
+	returnChan <- "upload completed"
 }
 
 // retorna um storage client
