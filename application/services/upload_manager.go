@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -98,14 +97,18 @@ func (vu *VideoUpload) ProcessUpload(concurrency int, doneUpload chan string) er
 		return err
 	}
 
-	// loop
+	// loop que cria a quantidade de processos (goroutine) de upload que serão gerados em concorrência/simultaneos
+	// essas goroutines ficam rodando em bacground de forma assincrona
 	for process := 0; process < concurrency; process++ {
 		go vu.uploadWorker(in, returnChannel, uploadClient, ctx)
 	}
 
+	// goroutine/processo assincrono que vai ler vu.Paths e enviar cada path no canal de entrada in
 	go func() {
 		for x := 0; x < len(vu.Paths); x++ {
 			in <- x
+			// o canal só armazendo um dado de cada vez, caso no retorno do loop o canal ainda esetja cheio
+			// o processo fica parado esperadno canal ser esvaziado
 		}
 		close(in)
 	}()
@@ -121,21 +124,14 @@ func (vu *VideoUpload) ProcessUpload(concurrency int, doneUpload chan string) er
 
 }
 
+// executa/faz o upload
 func (vu *VideoUpload) uploadWorker(in chan int, returnChan chan string, uploadClient *storage.Client, ctx context.Context) {
 
+	// le/esvazia o canal in
 	for x := range in {
-		err := vu.UploadObject(vu.Paths[x], uploadClient, ctx)
 
-		if err != nil {
-			vu.Errors = append(vu.Errors, vu.Paths[x])
-			log.Printf("error during the upload: %v. Error: %v", vu.Paths[x], err)
-			returnChan <- err.Error()
-		}
-
-		returnChan <- ""
 	}
 
-	returnChan <- "upload completed"
 }
 
 // retorna um storage client
