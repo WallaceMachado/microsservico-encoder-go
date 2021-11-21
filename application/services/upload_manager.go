@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -129,8 +130,18 @@ func (vu *VideoUpload) uploadWorker(in chan int, returnChan chan string, uploadC
 
 	// le/esvazia o canal in
 	for x := range in {
+		err := vu.UploadObject(vu.Paths[x], uploadClient, ctx)
 
+		if err != nil {
+			vu.Errors = append(vu.Errors, vu.Paths[x])
+			log.Printf("error during the upload: %v. Error: %v", vu.Paths[x], err)
+			returnChan <- err.Error()
+		}
+
+		returnChan <- ""
 	}
+
+	returnChan <- "upload completed"
 
 }
 
